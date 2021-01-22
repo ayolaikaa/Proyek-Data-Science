@@ -1,0 +1,111 @@
+---
+title: "disaster"
+author: "salsa yola"
+date: "1/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(stringr)
+library(dplyr)
+library(ggplot2)
+library(tm)
+library(wordcloud)
+library(syuzhet)
+library(tidytext)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(readr)
+library(circlize)
+library(reshape2)
+library(textdata)
+
+texts <- read.csv(file.choose())
+
+texts$length <- str_count(texts$text)
+
+length_df <- texts %>%
+group_by(location) %>%
+summarise(length = sum(length))
+```
+```{r}
+library(tm)
+library(wordcloud)
+
+texts_text <- texts$text
+#creating a text corpus
+docs <- Corpus(VectorSource(texts_text))
+# Converting the text to lower case
+docs <- tm_map(docs, content_transformer(tolower))
+# creating term document matrix
+tdm <- TermDocumentMatrix(docs)
+# defining tdm as matrix
+m <- as.matrix(tdm)
+# getting word counts in decreasing order
+word_freqs = sort(rowSums(m), decreasing=TRUE)
+# creating a data frame with words and their frequencies
+texts_wc_df <- data.frame(word=names(word_freqs), freq=word_freqs)
+
+texts_wc_df <- texts_wc_df[1:300,]
+
+# plotting wordcloud
+
+set.seed(1234)
+wordcloud(words = texts_wc_df$word, freq = texts_wc_df$freq,
+min.freq = 1,scale=c(1.8,.5),
+max.words=200, random.order=FALSE, rot.per=0.15,colors=brewer.pal(8, 'Dark2'))
+```
+```{r}
+# Getting the sentiment value
+a <-as.character(texts$text)
+ty_sentiment <- get_nrc_sentiment(a)
+
+# Dataframe with cumulative value of the sentiments
+sentimentscores<-data.frame(colSums(ty_sentiment[,]))
+
+```
+```{r}
+sentimentscores<-data.frame(colSums(ty_sentiment[,]))
+# Dataframe with sentiment and score as columns
+names(sentimentscores) <- 'Score'
+sentimentscores <- cbind('sentiment'=rownames(sentimentscores),sentimentscores)
+rownames(sentimentscores) <- NULL
+
+# Plot for the cumulative sentiments
+ggplot(data=sentimentscores,aes(x=sentiment,y=Score))+
+geom_bar(aes(fill=sentiment),stat = 'identity')+
+theme(legend.position='none')+
+xlab('sentiments')+ylab('Scores')+
+theme_minimal()
+```
+```{r}
+texts$tweet <- as.character(texts$text)
+
+tidy_texts <- texts %>%
+unnest_tokens(word,tweet)
+
+tweet_wrd_count <- tidy_texts %>% count(location)
+
+tweet_counts <- tidy_texts %>%
+left_join(tweet_wrd_count, by = "location") %>%
+rename(total_words=n)
+
+tweet_sentiment <- tidy_texts %>%
+inner_join(get_sentiments('nrc'),by='word')
+
+tweet_sentiment %>%
+count(word,sentiment,sort=TRUE) %>%
+group_by(sentiment)%>%top_n(n=10) %>%
+ungroup() %>%
+ggplot(aes(x=reorder(word,n),y=n,fill=sentiment)) +
+geom_col(show.legend = FALSE) +
+facet_wrap(~sentiment,scales='free') +
+xlab('Sentiments') + ylab('Scores')+
+ggtitle('Top words used to express emotions and sentiments') +
+coord_flip()
+```
